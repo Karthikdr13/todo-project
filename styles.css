@@ -25,6 +25,7 @@ h1 {
 
 .todo-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
@@ -50,6 +51,10 @@ h1 {
   background: #1d4ed8;
 }
 
+#todo-duration {
+  flex: 0 0 100px;
+}
+
 .todo-list {
   list-style: none;
   padding: 0;
@@ -58,7 +63,7 @@ h1 {
 
 .todo-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.65rem 0.75rem;
@@ -66,6 +71,25 @@ h1 {
   border-radius: 8px;
   margin-bottom: 0.5rem;
   background: #fafafa;
+}
+
+.todo-content {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.todo-title {
+  font-weight: 600;
+}
+
+.todo-meta {
+  font-size: 0.86rem;
+  color: #6b7280;
+}
+
+.todo-countdown {
+  font-size: 0.86rem;
+  color: #1d4ed8;
 }
 
 .todo-item button {
@@ -79,4 +103,37 @@ h1 {
 
 .todo-item button:hover {
   background: #b91c1c;
+}
+
+.finished-section {
+  margin-top: 1.25rem;
+}
+
+.finished-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.finished-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+#clear-finished {
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  background: #6b7280;
+  color: #fff;
+  cursor: pointer;
+}
+
+#clear-finished:hover {
+  background: #4b5563;
+}
+
+.todo-item.finished {
+  background: #f1f5f9;
 }

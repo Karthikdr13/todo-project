@@ -18,10 +18,26 @@
           aria-label="Todo input"
           required
         />
+        <input
+          id="todo-duration"
+          type="text"
+          placeholder="HH:mm"
+          aria-label="Duration in hours and minutes"
+          pattern="\\d{2}:\\d{2}"
+          required
+        />
         <button type="submit">Add</button>
       </form>
 
       <ul id="todo-list" class="todo-list"></ul>
+
+      <section class="finished-section">
+        <div class="finished-header">
+          <h2>Finished Tasks</h2>
+          <button id="clear-finished" type="button">Clear Finished</button>
+        </div>
+        <ul id="finished-list" class="todo-list"></ul>
+      </section>
     </main>
 
     <script src="script.js"></script>
