@@ -1,6 +1,6 @@
 ---
 description: Read the current file, diagnose errors, and fix them only after asking whether to commit after changes.
-tools: ['codebase', 'editFiles', 'terminalLastCommand', 'terminalSelection', 'runCommands', 'search']
+tools: ['search/codebase', 'edit/editFiles', 'read/terminalLastCommand', 'read/terminalSelection', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search']
 ---
 
 # Fix With Commit Check Agent
