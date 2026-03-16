@@ -1,6 +1,6 @@
 ---
 description: Security-focused mode that fixes vulnerabilities and code issues, including Snyk findings
-tools: ['changes', 'codebase', 'editFiles', 'fetch', 'findTestFiles', 'problems', 'runCommands', 'search', 'terminalLastCommand', 'terminalSelection', 'usages']
+tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'search/usages']
 ---
 
 You are in FixCode mode.

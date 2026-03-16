@@ -17,8 +17,21 @@ if (!todoForm || !todoInput || !todoHoursInput || !todoMinutesInput || !todoList
 // ===== THEME MANAGEMENT =====
 const THEME_KEY = 'themePreference';
 
+function safeLocalStorageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    if (error.name === 'SecurityError') {
+      console.error('localStorage access denied (private browsing or blocked).');
+    } else {
+      console.error('Failed to read from localStorage:', error);
+    }
+    return null;
+  }
+}
+
 function initTheme() {
-  const savedTheme = localStorage.getItem(THEME_KEY);
+  const savedTheme = safeLocalStorageGet(THEME_KEY);
   if (savedTheme === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
   } else {
@@ -45,13 +58,23 @@ initTheme();
 const STORAGE_KEY = 'todoAppStateV1';
 let renderIntervalId = null;
 
+// ===== NAMED CONSTANTS (SonarQube: avoid magic numbers) =====
+const SECONDS_PER_MINUTE = 60;
+const SECONDS_PER_HOUR = 3600;
+const SECONDS_PER_DAY = 86400;
+const MAX_DURATION_HOURS = 8760; // 1 year
+const MAX_TASK_TEXT_LENGTH = 500;
+const RENDER_INTERVAL_MS = 1000;
+const REMOVE_ANIMATION_MS = 250;
+const FUTURE_TIMESTAMP_BUFFER_MS = 1000;
+
 const state = {
   activeTasks: [],
   finishedTasks: [],
 };
 
 function loadState() {
-  const rawValue = localStorage.getItem(STORAGE_KEY);
+  const rawValue = safeLocalStorageGet(STORAGE_KEY);
   if (!rawValue) return;
 
   try {
@@ -109,8 +132,13 @@ function isValidFinishedTask(task) {
     typeof task.finishedAt === 'number' &&
     Number.isFinite(task.finishedAt) &&
     task.finishedAt >= 0 &&
-    task.finishedAt <= Date.now() + 1000 // Prevent future timestamps
+    task.finishedAt <= Date.now() + FUTURE_TIMESTAMP_BUFFER_MS // Prevent future timestamps
   );
+}
+
+// ===== HELPER FUNCTION (SonarQube: reduce duplication) =====
+function hasValidDeadline(task) {
+  return typeof task.endsAt === 'number' && Number.isFinite(task.endsAt);
 }
 
 function parseOptionalDurationToSeconds(hoursValue, minutesValue) {
@@ -130,8 +158,8 @@ function parseOptionalDurationToSeconds(hoursValue, minutesValue) {
     return null;
   }
 
-  const totalSeconds = (hours * 3600) + (minutes * 60);
-  const maxSeconds = 8760 * 3600;
+  const totalSeconds = (hours * SECONDS_PER_HOUR) + (minutes * SECONDS_PER_MINUTE);
+  const maxSeconds = MAX_DURATION_HOURS * SECONDS_PER_HOUR;
 
   if (totalSeconds < 0 || totalSeconds > maxSeconds) {
     return null;
@@ -144,7 +172,7 @@ function parseOptionalDurationToSeconds(hoursValue, minutesValue) {
 function isValidTaskText(text) {
   if (typeof text !== 'string') return false;
   const trimmed = text.trim();
-  return trimmed.length > 0 && trimmed.length <= 500; // Prevent excessively long text
+  return trimmed.length > 0 && trimmed.length <= MAX_TASK_TEXT_LENGTH;
 }
 
 function formatDateTime(timestamp) {
@@ -157,6 +185,16 @@ function generateTaskId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
+
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
   
   // Fallback: generate UUID v4 manually
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -167,11 +205,11 @@ function generateTaskId() {
 }
 
 function formatRemainingTime(msRemaining) {
-  const totalSeconds = Math.max(0, Math.floor(msRemaining / 1000));
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const totalSeconds = Math.max(0, Math.floor(msRemaining / RENDER_INTERVAL_MS));
+  const days = Math.floor(totalSeconds / SECONDS_PER_DAY);
+  const hours = Math.floor((totalSeconds % SECONDS_PER_DAY) / SECONDS_PER_HOUR);
+  const minutes = Math.floor((totalSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+  const seconds = totalSeconds % SECONDS_PER_MINUTE;
 
   if (days > 0) {
     return `${days}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
@@ -182,7 +220,7 @@ function formatRemainingTime(msRemaining) {
 
 // Calculate urgency class based on time remaining
 function getUrgencyClass(msRemaining) {
-  const hoursRemaining = msRemaining / (1000 * 60 * 60);
+  const hoursRemaining = msRemaining / (RENDER_INTERVAL_MS * SECONDS_PER_HOUR);
   
   if (hoursRemaining <= 1) return 'task-critical';  // Less than 1 hour
   if (hoursRemaining <= 3) return 'task-urgent';    // 1-3 hours
@@ -194,9 +232,9 @@ function getUrgencyClass(msRemaining) {
 function formatRelativeTime(timestamp) {
   const now = Date.now();
   const diff = now - timestamp;
-  const minutes = Math.floor(diff / (1000 * 60));
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const minutes = Math.floor(diff / (RENDER_INTERVAL_MS * SECONDS_PER_MINUTE));
+  const hours = Math.floor(diff / (RENDER_INTERVAL_MS * SECONDS_PER_HOUR));
+  const days = Math.floor(diff / (RENDER_INTERVAL_MS * SECONDS_PER_DAY));
   
   if (minutes < 1) return 'Just now';
   if (minutes < 60) return `${minutes}m ago`;
@@ -212,12 +250,9 @@ function buildTaskItem(task, isFinished, nowTimestamp) {
   let className = 'todo-item';
   if (isFinished) {
     className += ' finished';
-  } else {
-    const hasDeadline = typeof task.endsAt === 'number' && Number.isFinite(task.endsAt);
-    if (hasDeadline) {
-      const msRemaining = task.endsAt - nowTimestamp;
-      className += ` ${getUrgencyClass(msRemaining)}`;
-    }
+  } else if (hasValidDeadline(task)) {
+    const msRemaining = task.endsAt - nowTimestamp;
+    className += ` ${getUrgencyClass(msRemaining)}`;
   }
   listItem.className = className;
 
@@ -237,13 +272,10 @@ function buildTaskItem(task, isFinished, nowTimestamp) {
 
   if (isFinished) {
     extra.innerHTML = `<span class="countdown-icon">✅</span> Completed ${formatRelativeTime(task.finishedAt)}`;
+  } else if (hasValidDeadline(task)) {
+    extra.innerHTML = `<span class="countdown-icon">⏱️</span> ${formatRemainingTime(task.endsAt - nowTimestamp)}`;
   } else {
-    const hasDeadline = typeof task.endsAt === 'number' && Number.isFinite(task.endsAt);
-    if (hasDeadline) {
-      extra.innerHTML = `<span class="countdown-icon">⏱️</span> ${formatRemainingTime(task.endsAt - nowTimestamp)}`;
-    } else {
-      extra.innerHTML = '<span class="countdown-icon">📌</span> No deadline';
-    }
+    extra.innerHTML = '<span class="countdown-icon">📌</span> No deadline';
   }
 
   content.appendChild(title);
@@ -280,7 +312,7 @@ function buildTaskItem(task, isFinished, nowTimestamp) {
         state.activeTasks = state.activeTasks.filter((item) => item.id !== task.id);
         saveState();
         render();
-      }, 250);
+      }, REMOVE_ANIMATION_MS);
     });
 
     btnGroup.appendChild(finishButton);
@@ -307,9 +339,7 @@ function moveExpiredTasksToFinished(nowTimestamp) {
   const newlyFinished = [];
 
   for (const task of state.activeTasks) {
-    const hasDeadline = typeof task.endsAt === 'number' && Number.isFinite(task.endsAt);
-
-    if (hasDeadline && task.endsAt <= nowTimestamp) {
+    if (hasValidDeadline(task) && task.endsAt <= nowTimestamp) {
       // **SECURITY FIX**: Validate timestamp before creating finished task
       const finishedTask = { 
         ...task, 
@@ -388,7 +418,7 @@ todoForm.addEventListener('submit', (event) => {
 
   // **SECURITY FIX**: Validate input text and optional duration before processing
   if (!isValidTaskText(text)) {
-    alert('Please enter a valid task (1-500 characters).');
+    alert(`Please enter a valid task (1-${MAX_TASK_TEXT_LENGTH} characters).`);
     todoInput.focus();
     return;
   }
@@ -405,9 +435,9 @@ todoForm.addEventListener('submit', (event) => {
     const createdAt = Date.now();
     const newTask = {
       id: generateTaskId(),
-      text: text.substring(0, 500), // Enforce max length at creation
+      text: text.substring(0, MAX_TASK_TEXT_LENGTH), // Enforce max length at creation
       createdAt,
-      endsAt: durationSeconds > 0 ? createdAt + durationSeconds * 1000 : null,
+      endsAt: durationSeconds > 0 ? createdAt + durationSeconds * RENDER_INTERVAL_MS : null,
     };
 
     // Validate the task before adding
@@ -446,7 +476,7 @@ render();
 // **SECURITY FIX**: Store interval ID and set up cleanup on page unload
 renderIntervalId = setInterval(() => {
   render();
-}, 1000);
+}, RENDER_INTERVAL_MS);
 
 // **SECURITY FIX**: Cleanup interval and listeners on page unload to prevent memory leaks
 window.addEventListener('unload', () => {
@@ -468,7 +498,7 @@ document.addEventListener('visibilitychange', () => {
     if (renderIntervalId === null) {
       renderIntervalId = setInterval(() => {
         render();
-      }, 1000);
+      }, RENDER_INTERVAL_MS);
     }
   }
 });
